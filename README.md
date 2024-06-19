@@ -1,1 +1,3 @@
 # khazande
+
+This is micro-service written in Golang which is responsible of finding and extracting information about vlnerabilities of a packager, library, etc ...
