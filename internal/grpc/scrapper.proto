@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package grpc;
+option go_package = "./grpc";
+
+message Vulnerability {
+    string name = 1;
+    string CVEID = 2;
+	string publishedDate = 3;
+    string lastModified = 4;
+	string description = 5;
+	repeated string VulnerableVersions = 6;
+	string NVDScore = 7;
+	string CNAScore = 8;
+}
+
+message VulnerabilityRequest {
+    string name = 1;
+}
+
+message VulnerabilityResponse {
+    repeated Vulnerability vulnerabilities = 1;
+}
+
+service ScrapperService {
+    rpc FetchVulnerabilities(VulnerabilityRequest) returns (VulnerabilityResponse) {};
+}
