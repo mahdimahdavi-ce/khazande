@@ -3,12 +3,20 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	"net"
+	"os"
+	"os/signal"
 
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 
 	crawlerModule "khazande/internal/crawler"
 	pb "khazande/internal/grpc"
+	envsModule "khazande/pkg/envs"
+	loggerModule "khazande/pkg/logger"
+	redisModule "khazande/pkg/redis"
 )
 
 type server struct {
@@ -67,5 +75,31 @@ func (s *server) FetchVulnerabilities(ctx context.Context, req *pb.Vulnerability
 }
 
 func main() {
+	envs := envsModule.ReadEnvs()
+	logger := loggerModule.InitialLogger(envs.LOG_LEVEL)
+	redisClient := redisModule.Init(envs)
 
+	lis, tcpErr := net.Listen("tcp", fmt.Sprintf("%s:%s", envs.GRPC_SERVER_ADDRESS, envs.GRPC_SERVER_PORT))
+	if tcpErr != nil {
+		log.Fatalf("Failed to stablish a tcp connections: %v", tcpErr)
+	}
+
+	grpcServer := grpc.NewServer()
+	pb.RegisterScrapperServiceServer(grpcServer, &server{Logger: logger, RedisClient: redisClient})
+
+	channel := make(chan os.Signal, 1)
+	signal.Notify(channel, os.Interrupt)
+
+	go func() {
+		logger.Info("Service is started and waiting for incoming messages ...")
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Fatalf("Failed to start gRPC server: %v", err)
+		}
+	}()
+
+	<-channel
+	grpcServer.Stop()
+	logger.Info("gRPC server is stoped")
+	lis.Close()
+	logger.Info("TCP connection is closed")
 }
