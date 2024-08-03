@@ -4,6 +4,7 @@ import "time"
 
 type Vulnerability struct {
 	Name               string   `json:"name"`
+	Summary            string   `json:"summary"`
 	CVEID              string   `json:"CVEID"`
 	PublishedDate      string   `json:"publishDate"`
 	LastModified       string   `json:"lastModified"`
@@ -13,6 +14,7 @@ type Vulnerability struct {
 	CNAScore           string   `json:"CNAScore"`
 	AffectedVersions   string   `json:"affectedVersions"`
 	PatchedVersions    string   `json:"patchedVersions"`
+	Severity           string   `json:"severity"`
 }
 
 type GitHubVulnerabilityQueryResponse struct {
@@ -33,6 +35,9 @@ type VulnerabilityNode struct {
 		Severity    string       `json:"severity"`
 		Identifiers []Identifier `json:"identifiers"`
 		PublishedAt time.Time    `json:"publishedAt"`
+		CVSS        struct {
+			Score string `json:"score"`
+		} `json:"cvss"`
 	} `json:"advisory"`
 	VulnerableVersionRange string `json:"vulnerableVersionRange"`
 	FirstPatchedVersion    struct {
