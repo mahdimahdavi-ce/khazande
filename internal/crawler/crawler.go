@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"khazande/internal/types"
+
 	"github.com/PuerkitoBio/goquery"
 	"github.com/gocolly/colly"
 	"github.com/redis/go-redis/v9"
@@ -19,19 +21,6 @@ import (
 type Crawler struct {
 	Logger      *zap.Logger
 	RedisClient *redis.Client
-}
-
-type Vulnerability struct {
-	Name               string   `json:"name"`
-	CVEID              string   `json:"CVEID"`
-	PublishedDate      string   `json:"publishDate"`
-	LastModified       string   `json:"lastModified"`
-	Description        string   `json:"description"`
-	VulnerableVersions []string `json:"vulnerableVersions"`
-	NVDScore           string   `json:"NVDScore"`
-	CNAScore           string   `json:"CNAScore"`
-	AffectedVersions   string   `json:"affectedVersions"`
-	PatchedVersions    string   `json:"patchedVersions"`
 }
 
 func (crawler *Crawler) ExtractVulnerabilitiesLinks(query string) []string {
@@ -70,11 +59,11 @@ func (crawler *Crawler) ExtractVulnerabilityLinksPerPage(link, query string) []s
 	return vulnerabiliyLinks
 }
 
-func (crawler *Crawler) ExtractVulnerabilitiesDetails(query string, vulnerabilitiesLinks []string) []Vulnerability {
+func (crawler *Crawler) ExtractVulnerabilitiesDetails(query string, vulnerabilitiesLinks []string) []types.Vulnerability {
 	crawler.Logger.Info(fmt.Sprintf("Web Scrapper is started to extract data of %d vulnerabilities", len(vulnerabilitiesLinks)))
 
 	// Create a channel to handle the results
-	results := make(chan Vulnerability, len(vulnerabilitiesLinks))
+	results := make(chan types.Vulnerability, len(vulnerabilitiesLinks))
 	// Create a WaitGroup to wait for all goroutines to finish
 	var wg sync.WaitGroup
 	concurrentWorkers := 10
@@ -97,7 +86,7 @@ func (crawler *Crawler) ExtractVulnerabilitiesDetails(query string, vulnerabilit
 		close(results)
 	}()
 
-	var vulnerSlice []Vulnerability
+	var vulnerSlice []types.Vulnerability
 	for vuln := range results {
 		vulnerSlice = append(vulnerSlice, vuln)
 	}
@@ -105,8 +94,8 @@ func (crawler *Crawler) ExtractVulnerabilitiesDetails(query string, vulnerabilit
 	return vulnerSlice
 }
 
-func (crawler *Crawler) scrapeVulnerabilityDetails(query, link string) Vulnerability {
-	var vuln Vulnerability
+func (crawler *Crawler) scrapeVulnerabilityDetails(query, link string) types.Vulnerability {
+	var vuln types.Vulnerability
 
 	splitedLink := strings.Split(link, "/")
 	val, err := crawler.RedisClient.Get(context.Background(), splitedLink[len(splitedLink)-1]).Result()
