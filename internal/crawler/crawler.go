@@ -30,6 +30,8 @@ type Vulnerability struct {
 	VulnerableVersions []string `json:"vulnerableVersions"`
 	NVDScore           string   `json:"NVDScore"`
 	CNAScore           string   `json:"CNAScore"`
+	AffectedVersions   string   `json:"affectedVersions"`
+	PatchedVersions    string   `json:"patchedVersions"`
 }
 
 func (crawler *Crawler) ExtractVulnerabilitiesLinks(query string) []string {
