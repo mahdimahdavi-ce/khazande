@@ -112,33 +112,34 @@ func (a *Advisor) FetchVulnerabiltyOfSpecificPackage(packageName string, version
 	var result []*types.Vulnerability
 
 	for _, vulnerabilityNode := range githubResponse.Data.SecurityVulnerabilities.Nodes {
-		inRange, err := isVersionInRange(version, vulnerabilityNode.VulnerableVersionRange)
-		if err != nil {
-			a.Logger.Sugar().Errorf("Error checking version range: %v", err)
-		}
-
-		if inRange {
-			vulnerability := new(types.Vulnerability)
-
-			vulnerability.Name = vulnerabilityNode.Package.Name
-			vulnerability.Summary = vulnerabilityNode.Advisory.Summary
-			vulnerability.Description = vulnerabilityNode.Advisory.Description
-			vulnerability.Severity = vulnerabilityNode.Advisory.Severity
-			vulnerability.PublishedDate = vulnerabilityNode.Advisory.PublishedAt.String()
-			vulnerability.LastModified = vulnerabilityNode.UpdatedAt.String()
-			vulnerability.AffectedVersions = vulnerabilityNode.VulnerableVersionRange
-			vulnerability.PatchedVersions = vulnerabilityNode.FirstPatchedVersion.Identifier
-			vulnerability.NVDScore = vulnerabilityNode.Advisory.CVSS.Score
-
-			for _, identifier := range vulnerabilityNode.Advisory.Identifiers {
-				if identifier.Type == "CVE" {
-					vulnerability.CVEID = identifier.Value
-				}
+		if vulnerabilityNode.Package.Name == packageName {
+			inRange, err := isVersionInRange(version, vulnerabilityNode.VulnerableVersionRange)
+			if err != nil {
+				a.Logger.Sugar().Errorf("Error checking version range: %v", err)
 			}
 
-			result = append(result, vulnerability)
-		}
+			if inRange {
+				vulnerability := new(types.Vulnerability)
 
+				vulnerability.Name = vulnerabilityNode.Package.Name
+				vulnerability.Summary = vulnerabilityNode.Advisory.Summary
+				vulnerability.Description = vulnerabilityNode.Advisory.Description
+				vulnerability.Severity = vulnerabilityNode.Advisory.Severity
+				vulnerability.PublishedDate = vulnerabilityNode.Advisory.PublishedAt.String()
+				vulnerability.LastModified = vulnerabilityNode.UpdatedAt.String()
+				vulnerability.AffectedVersions = vulnerabilityNode.VulnerableVersionRange
+				vulnerability.PatchedVersions = vulnerabilityNode.FirstPatchedVersion.Identifier
+				vulnerability.NVDScore = vulnerabilityNode.Advisory.CVSS.Score
+
+				for _, identifier := range vulnerabilityNode.Advisory.Identifiers {
+					if identifier.Type == "CVE" {
+						vulnerability.CVEID = identifier.Value
+					}
+				}
+
+				result = append(result, vulnerability)
+			}
+		}
 	}
 
 	return result
