@@ -7,9 +7,12 @@ import (
 	"os"
 	"os/signal"
 
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/logger"
 	"google.golang.org/grpc"
 
 	nvdModule "khazande/internal/nvd"
+	routerModule "khazande/internal/routers"
 	envsModule "khazande/pkg/envs"
 	pb "khazande/pkg/grpc"
 	loggerModule "khazande/pkg/logger"
@@ -17,6 +20,9 @@ import (
 )
 
 func main() {
+	app := fiber.New()
+	app.Use(logger.New())
+
 	envs := envsModule.ReadEnvs()
 	logger := loggerModule.InitialLogger(envs.LOG_LEVEL)
 	redisClient := redisModule.Init(envs)
@@ -39,7 +45,9 @@ func main() {
 		}
 	}()
 
-	<-channel
+	routers := routerModule.Initial(envs, logger)
+	routers.SetupRouters(app)
+
 	grpcServer.Stop()
 	logger.Info("gRPC server is stoped")
 	lis.Close()

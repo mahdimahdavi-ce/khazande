@@ -8,7 +8,6 @@ import (
 	types "khazande/internal/types"
 	envsModule "khazande/pkg/envs"
 	"net/http"
-	"strings"
 	"sync"
 
 	"github.com/Masterminds/semver/v3"
@@ -27,13 +26,18 @@ type GitHubVulnerabilityQuery struct {
 func (a *Advisor) FetchVulnerabilitiesFromGithub(packages map[string]string) map[string][]*types.Vulnerability {
 	vulnerabilites := make(map[string][]*types.Vulnerability)
 	var wg sync.WaitGroup
+	var mutex sync.Mutex
 
 	for packageName, packageVersion := range packages {
 		wg.Add(1)
 
 		go func() {
 			defer wg.Done()
-			vulnerabilites[packageName] = a.FetchVulnerabiltyOfSpecificPackage(packageName, packageVersion)
+			packageVulnerabilities := a.fetchVulnerabiltyOfSpecificPackage(packageName, packageVersion)
+
+			mutex.Lock()
+			vulnerabilites[packageName] = packageVulnerabilities
+			mutex.Unlock()
 		}()
 	}
 
@@ -42,8 +46,7 @@ func (a *Advisor) FetchVulnerabilitiesFromGithub(packages map[string]string) map
 	return vulnerabilites
 }
 
-func (a *Advisor) FetchVulnerabiltyOfSpecificPackage(packageName string, version string) []*types.Vulnerability {
-	version = strings.TrimPrefix(version, "v")
+func (a *Advisor) fetchVulnerabiltyOfSpecificPackage(packageName string, version string) []*types.Vulnerability {
 	query := GitHubVulnerabilityQuery{
 		Query: fmt.Sprintf(`	
 		{
