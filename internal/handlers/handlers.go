@@ -84,10 +84,6 @@ func renderTableResult(vulerabilities map[string][]*types.Vulnerability) string 
 	}
 
 	t.SetStyle(style)
-	// t.SortBy([]table.SortBy{
-	// 	{Name: "#", Mode: table.Asc},
-	// 	{Name: "Package", Mode: table.Asc},
-	// })
 	count := 1
 
 	for pkg, packageVulnerabilities := range vulerabilities {
