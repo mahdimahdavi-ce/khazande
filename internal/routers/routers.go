@@ -34,7 +34,7 @@ func (r *Router) SetupRouters(app *fiber.App) {
 	// Adding /api as a prefix for endpoints
 	api := app.Group("/api")
 
-	api.Post("/fetch-vulnerabilities", r.Handler.VulnerabilityHandler())
+	api.Post("/fetch-vulnerabilities/:type", r.Handler.VulnerabilityHandler())
 
 	// 404 - Not Found error handler
 	app.Use(func(c *fiber.Ctx) error {
