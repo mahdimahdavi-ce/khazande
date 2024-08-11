@@ -23,7 +23,7 @@ type GitHubVulnerabilityQuery struct {
 	Query string `json:"query"`
 }
 
-func (a *Advisor) FetchVulnerabilitiesFromGithub(packages map[string]string) map[string][]*types.Vulnerability {
+func (a *Advisor) FetchVulnerabilitiesFromGithub(packages map[string]string, ecosystem string) map[string][]*types.Vulnerability {
 	vulnerabilites := make(map[string][]*types.Vulnerability)
 	var wg sync.WaitGroup
 	var mutex sync.Mutex
@@ -33,7 +33,7 @@ func (a *Advisor) FetchVulnerabilitiesFromGithub(packages map[string]string) map
 
 		go func() {
 			defer wg.Done()
-			packageVulnerabilities := a.fetchVulnerabiltyOfSpecificPackage(packageName, packageVersion)
+			packageVulnerabilities := a.fetchVulnerabiltyOfSpecificPackage(packageName, packageVersion, ecosystem)
 
 			mutex.Lock()
 			vulnerabilites[packageName] = packageVulnerabilities
@@ -46,11 +46,11 @@ func (a *Advisor) FetchVulnerabilitiesFromGithub(packages map[string]string) map
 	return vulnerabilites
 }
 
-func (a *Advisor) fetchVulnerabiltyOfSpecificPackage(packageName string, version string) []*types.Vulnerability {
+func (a *Advisor) fetchVulnerabiltyOfSpecificPackage(packageName string, version string, ecosystem string) []*types.Vulnerability {
 	query := GitHubVulnerabilityQuery{
 		Query: fmt.Sprintf(`	
 		{
-			securityVulnerabilities(first: 100, package: "%s", ecosystem: GO) {
+			securityVulnerabilities(first: 100, package: "%s", ecosystem: %s) {
 				nodes {
 					package {
 						name
@@ -73,7 +73,7 @@ func (a *Advisor) fetchVulnerabiltyOfSpecificPackage(packageName string, version
 					updatedAt
 				}
 			}
-		}`, packageName),
+		}`, packageName, ecosystem),
 	}
 
 	jsonQuery, err := json.Marshal(query)
@@ -113,8 +113,10 @@ func (a *Advisor) fetchVulnerabiltyOfSpecificPackage(packageName string, version
 	}
 
 	var result []*types.Vulnerability
+	fmt.Println(packageName, version)
 
 	for _, vulnerabilityNode := range githubResponse.Data.SecurityVulnerabilities.Nodes {
+		fmt.Println(vulnerabilityNode.Package.Name, vulnerabilityNode.Advisory.Summary)
 		if vulnerabilityNode.Package.Name == packageName {
 			inRange, err := isVersionInRange(version, vulnerabilityNode.VulnerableVersionRange)
 			if err != nil {
