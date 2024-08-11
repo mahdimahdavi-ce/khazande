@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	advisorModule "khazande/internal/advisor"
 	"khazande/internal/types"
 	envsModule "khazande/pkg/envs"
+	"log"
 	"regexp"
 	"strings"
 
@@ -16,6 +18,11 @@ import (
 
 type Handler struct {
 	Advisor *advisorModule.Advisor
+}
+
+type PackageJSON struct {
+	Dependencies    map[string]string `json:"dependencies"`
+	DevDependencies map[string]string `json:"devDependencies"`
 }
 
 func Initial(envs *envsModule.Envs, logger *zap.Logger) *Handler {
@@ -29,25 +36,95 @@ func Initial(envs *envsModule.Envs, logger *zap.Logger) *Handler {
 
 func (h *Handler) VulnerabilityHandler() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Regular expression to match package names and versions
-		re := regexp.MustCompile(`\s*([^ \n\r\t]+)\s+v([0-9]+\.[0-9]+\.[0-9]+)`)
-
-		matches := re.FindAllStringSubmatch(string(c.Body()), -1)
+		codeType := c.Params("type")
 
 		packages := make(map[string]string)
+		var ecosystem string
 
-		for _, match := range matches {
-			if len(match) == 3 {
-				packages[match[1]] = match[2]
-			}
+		switch codeType {
+		case "Go":
+			packages = extractGoPackages(string(c.Body()))
+			ecosystem = "GO"
+		case "Javascript":
+			packages = extractJavascriptPackages(c.Body())
+			ecosystem = "npm"
+		case "Python":
+			packages = extractPythonPackages(string(c.Body()))
+			ecosystem = "pip"
 		}
 
-		vulerabilities := h.Advisor.FetchVulnerabilitiesFromGithub(packages)
+		vulerabilities := h.Advisor.FetchVulnerabilitiesFromGithub(packages, ecosystem)
 
 		result := renderTableResult(vulerabilities)
 
 		return c.Status(200).SendString(result)
 	}
+}
+
+func extractGoPackages(gomod string) map[string]string {
+	// Regular expression to match package names and versions
+	re := regexp.MustCompile(`\s*([^ \n\r\t]+)\s+v([0-9]+\.[0-9]+\.[0-9]+)`)
+
+	matches := re.FindAllStringSubmatch(gomod, -1)
+
+	packages := make(map[string]string)
+
+	for _, match := range matches {
+		if len(match) == 3 {
+			packages[match[1]] = match[2]
+		}
+	}
+
+	return packages
+}
+
+func extractJavascriptPackages(packagejson []byte) map[string]string {
+	// Parse the JSON
+	var pkg PackageJSON
+	err := json.Unmarshal(packagejson, &pkg)
+	if err != nil {
+		log.Fatalf("Error parsing package.json: %v", err)
+	}
+
+	packages := make(map[string]string)
+
+	for name, version := range pkg.Dependencies {
+		packages[name] = version
+	}
+
+	for name, version := range pkg.DevDependencies {
+		packages[name] = version
+	}
+
+	fmt.Println(packages)
+	return packages
+}
+
+func extractPythonPackages(requirmentstxt string) map[string]string {
+	packages := make(map[string]string)
+
+	regex := regexp.MustCompile(`(?P<package>[a-zA-Z0-9_-]+)(?P<operator>[<>=!~]*)\s*(?P<version>[0-9.*]*)`)
+	lines := strings.Split(requirmentstxt, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue // Skip empty lines and comments
+		}
+
+		// Find matches
+		matches := regex.FindStringSubmatch(line)
+
+		if len(matches) > 0 {
+			pkgName := matches[1]
+			version := matches[3]
+
+			packages[pkgName] = version
+		}
+	}
+	fmt.Println(packages)
+
+	return packages
 }
 
 func renderTableResult(vulerabilities map[string][]*types.Vulnerability) string {
