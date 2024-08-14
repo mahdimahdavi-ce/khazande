@@ -57,9 +57,9 @@ func (h *Handler) VulnerabilityHandler() fiber.Handler {
 
 		if len(vulerabilities) > 0 {
 			result := renderTableResult(vulerabilities)
-			return c.Status(200).SendString(result)
+			return c.Status(400).SendString(result)
 		} else {
-			return c.Status(400).SendString("No vulnerabilities found!")
+			return c.Status(200).SendString("No vulnerabilities found!")
 		}
 
 	}
