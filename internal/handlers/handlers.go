@@ -47,10 +47,10 @@ func (h *Handler) VulnerabilityHandler() fiber.Handler {
 			ecosystem = "GO"
 		case "Javascript":
 			packages = extractJavascriptPackages(c.Body())
-			ecosystem = "npm"
+			ecosystem = "NPM"
 		case "Python":
 			packages = extractPythonPackages(string(c.Body()))
-			ecosystem = "pip"
+			ecosystem = "PIP"
 		}
 
 		vulerabilities := h.Advisor.FetchVulnerabilitiesFromGithub(packages, ecosystem)
@@ -93,11 +93,11 @@ func extractJavascriptPackages(packagejson []byte) map[string]string {
 	packages := make(map[string]string)
 
 	for name, version := range pkg.Dependencies {
-		packages[name] = version
+		packages[name] = strings.TrimPrefix(version, "^")
 	}
 
 	for name, version := range pkg.DevDependencies {
-		packages[name] = version
+		packages[name] = strings.TrimPrefix(version, "^")
 	}
 
 	fmt.Println(packages)
@@ -126,7 +126,6 @@ func extractPythonPackages(requirmentstxt string) map[string]string {
 			packages[pkgName] = version
 		}
 	}
-	fmt.Println(packages)
 
 	return packages
 }
@@ -180,7 +179,7 @@ func renderTableResult(vulerabilities map[string][]*types.Vulnerability) string 
 			count += 1
 		}
 	}
-	t.AppendFooter(table.Row{"", "", "Total", count})
+	t.AppendFooter(table.Row{"", "", "Total", count - 1})
 	t.Render()
 
 	return buffer.String()
