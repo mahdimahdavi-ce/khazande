@@ -8,6 +8,7 @@ import (
 	types "khazande/internal/types"
 	envsModule "khazande/pkg/envs"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/Masterminds/semver/v3"
@@ -116,8 +117,8 @@ func (a *Advisor) fetchVulnerabiltyOfSpecificPackage(packageName string, version
 	fmt.Println(packageName, version)
 
 	for _, vulnerabilityNode := range githubResponse.Data.SecurityVulnerabilities.Nodes {
-		fmt.Println(vulnerabilityNode.Package.Name, vulnerabilityNode.Advisory.Summary)
-		if vulnerabilityNode.Package.Name == packageName {
+		fmt.Println(vulnerabilityNode.Package.Name, vulnerabilityNode.VulnerableVersionRange)
+		if strings.ToLower(vulnerabilityNode.Package.Name) == strings.ToLower(packageName) {
 			inRange, err := isVersionInRange(version, vulnerabilityNode.VulnerableVersionRange)
 			if err != nil {
 				a.Logger.Sugar().Errorf("Error checking version range: %v", err)
