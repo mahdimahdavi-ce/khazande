@@ -10,6 +10,11 @@ type Envs struct {
 	REDIS_PORT                   string
 	GITHUB_ADVISORT_DATABASE_URL string
 	GITHUB_TOKEN                 string
+	PSQL_HOST                    string
+	PSQL_PORT                    string
+	PSQL_USERNAME                string
+	PSQL_PASSWORD                string
+	PSQL_DATABASE_NAME           string
 }
 
 func ReadEnvs() *Envs {
@@ -21,6 +26,11 @@ func ReadEnvs() *Envs {
 	envs.REDIS_PORT = os.Getenv("REDIS_PORT")
 	envs.GITHUB_ADVISORT_DATABASE_URL = os.Getenv("GITHUB_ADVISORT_DATABASE_URL")
 	envs.GITHUB_TOKEN = os.Getenv("GITHUB_TOKEN")
+	envs.PSQL_HOST = os.Getenv("PSQL_HOST")
+	envs.PSQL_PORT = os.Getenv("PSQL_PORT")
+	envs.PSQL_USERNAME = os.Getenv("PSQL_USERNAME")
+	envs.PSQL_PASSWORD = os.Getenv("PSQL_PASSWORD")
+	envs.PSQL_DATABASE_NAME = os.Getenv("PSQL_DATABASE_NAME")
 
 	return &envs
 }
