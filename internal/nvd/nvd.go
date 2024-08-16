@@ -1,26 +1,21 @@
 package service
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
 	"sync"
-	"time"
 
 	"khazande/internal/types"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/gocolly/colly"
-	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
 type Crawler struct {
-	Logger      *zap.Logger
-	RedisClient *redis.Client
+	Logger *zap.Logger
 }
 
 func (crawler *Crawler) ExtractVulnerabilitiesLinks(query string) []string {
@@ -97,16 +92,6 @@ func (crawler *Crawler) ExtractVulnerabilitiesDetails(query string, vulnerabilit
 func (crawler *Crawler) scrapeVulnerabilityDetails(query, link string) types.Vulnerability {
 	var vuln types.Vulnerability
 
-	splitedLink := strings.Split(link, "/")
-	val, err := crawler.RedisClient.Get(context.Background(), splitedLink[len(splitedLink)-1]).Result()
-
-	if err != nil {
-		crawler.Logger.Info(fmt.Sprintf("Cache miss for %s - %s", query, splitedLink[len(splitedLink)-1]))
-	} else {
-		json.Unmarshal([]byte(val), &vuln)
-		return vuln
-	}
-
 	c := colly.NewCollector()
 
 	// Extract the description of vulnerability
@@ -166,12 +151,6 @@ func (crawler *Crawler) scrapeVulnerabilityDetails(query, link string) types.Vul
 	})
 
 	c.Visit(link)
-
-	jsonVulnerability, marshalErr := json.Marshal(vuln)
-	if marshalErr == nil {
-		crawler.RedisClient.Set(context.Background(), splitedLink[len(splitedLink)-1], jsonVulnerability, 72*time.Hour)
-		// crawler.Logger.Info(fmt.Sprintf("Cache set for %s - %s", query, splitedLink[len(splitedLink)-1]))
-	}
 
 	return vuln
 }

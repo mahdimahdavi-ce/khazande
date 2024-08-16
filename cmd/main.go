@@ -18,7 +18,6 @@ import (
 	envsModule "khazande/pkg/envs"
 	pb "khazande/pkg/grpc"
 	loggerModule "khazande/pkg/logger"
-	redisModule "khazande/pkg/redis"
 
 	_ "github.com/lib/pq"
 )
@@ -29,7 +28,6 @@ func main() {
 
 	envs := envsModule.ReadEnvs()
 	logger := loggerModule.InitialLogger(envs.LOG_LEVEL)
-	redisClient := redisModule.Init(envs)
 	psqlClient := InitialDatabase(envs.PSQL_HOST, envs.PSQL_PORT, envs.PSQL_USERNAME, envs.PSQL_PASSWORD, envs.PSQL_DATABASE_NAME)
 
 	lis, tcpErr := net.Listen("tcp", fmt.Sprintf("%s:%s", envs.GRPC_SERVER_ADDRESS, envs.GRPC_SERVER_PORT))
@@ -38,7 +36,7 @@ func main() {
 	}
 
 	grpcServer := grpc.NewServer()
-	pb.RegisterScrapperServiceServer(grpcServer, &grpcModule.Server{Logger: logger, RedisClient: redisClient, Envs: envs})
+	pb.RegisterScrapperServiceServer(grpcServer, &grpcModule.Server{Logger: logger, Envs: envs})
 
 	channel := make(chan os.Signal, 1)
 	signal.Notify(channel, os.Interrupt)

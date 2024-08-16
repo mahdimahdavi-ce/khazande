@@ -14,15 +14,13 @@ import (
 	envsModule "khazande/pkg/envs"
 	pb "khazande/pkg/grpc"
 
-	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
 type Server struct {
 	pb.UnimplementedScrapperServiceServer
-	Logger      *zap.Logger
-	RedisClient *redis.Client
-	Envs        *envsModule.Envs
+	Logger *zap.Logger
+	Envs   *envsModule.Envs
 }
 
 type GitHubVulnerabilityQuery struct {
@@ -49,7 +47,7 @@ func (s *Server) FetchVulnerabilities(ctx context.Context, req *pb.Vulnerability
 		s.Logger.Sugar().Infof("New vulnerability is found for %s from Github Advisor Database - %s", query, vul.CVEID)
 	}
 
-	crawler := nvdModule.Crawler{Logger: s.Logger, RedisClient: s.RedisClient}
+	crawler := nvdModule.Crawler{Logger: s.Logger}
 
 	nvdlinks := crawler.ExtractVulnerabilitiesLinks(query)
 
