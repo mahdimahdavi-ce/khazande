@@ -1,67 +1,225 @@
-package nvd
+package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
 
-	crawlerModule "khazande/internal/crawler"
-	pb "khazande/pkg/grpc"
+	"khazande/internal/types"
 
+	"github.com/PuerkitoBio/goquery"
+	"github.com/gocolly/colly"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
-type Server struct {
-	pb.UnimplementedScrapperServiceServer
+type Crawler struct {
 	Logger      *zap.Logger
 	RedisClient *redis.Client
 }
 
-func handlePanic() {
-	a := recover()
+func (crawler *Crawler) ExtractVulnerabilitiesLinks(query string) []string {
+	vulnerabilitiesLinks := []string{}
+	baseLink := generateLink(query)
+	counter := 0
 
-	if a != nil {
-		fmt.Printf("Recover from panic: %v", a)
+	for {
+		finalLink := fmt.Sprintf("%s&startIndex=%d", baseLink, counter)
+		vuls := crawler.ExtractVulnerabilityLinksPerPage(finalLink, query)
+
+		if len(vuls) != 0 {
+			vulnerabilitiesLinks = append(vulnerabilitiesLinks, vuls...)
+			counter += 20
+		} else {
+			break
+		}
 	}
+
+	crawler.Logger.Info(fmt.Sprintf("Web Crawler has found %d vulnerabilities for %s", len(vulnerabilitiesLinks), query))
+	return vulnerabilitiesLinks
 }
 
-func (s *Server) FetchVulnerabilities(ctx context.Context, req *pb.VulnerabilityRequest) (*pb.VulnerabilityResponse, error) {
-	defer handlePanic()
+func (crawler *Crawler) ExtractVulnerabilityLinksPerPage(link, query string) []string {
+	c := colly.NewCollector()
+	vulnerabiliyLinks := []string{}
 
-	query := req.GetName()
-	s.Logger.Info(fmt.Sprintf("Start searching for %s vulnerabilities", query))
+	c.OnHTML("tr th strong", func(h *colly.HTMLElement) {
+		vulnerability := h.ChildText("a")
+		vulnerabiliyLinks = append(vulnerabiliyLinks, fmt.Sprintf("https://nvd.nist.gov/vuln/detail/%v", vulnerability))
+		crawler.Logger.Info(fmt.Sprintf("New vulnerability is found for %s from National Vulnerability Database - %s", query, vulnerability))
+	})
 
-	crawler := crawlerModule.Crawler{Logger: s.Logger, RedisClient: s.RedisClient}
+	c.Visit(link)
 
-	links := crawler.ExtractVulnerabilitiesLinks(query)
+	return vulnerabiliyLinks
+}
 
-	if len(links) == 0 {
-		return nil, fmt.Errorf("there is no matching Vulnerabilities")
+func (crawler *Crawler) ExtractVulnerabilitiesDetails(query string, vulnerabilitiesLinks []string) []types.Vulnerability {
+	crawler.Logger.Info(fmt.Sprintf("Web Scrapper is started to extract data of %d vulnerabilities", len(vulnerabilitiesLinks)))
+
+	// Create a channel to handle the results
+	results := make(chan types.Vulnerability, len(vulnerabilitiesLinks))
+	// Create a WaitGroup to wait for all goroutines to finish
+	var wg sync.WaitGroup
+	concurrentWorkers := 10
+	sem := make(chan struct{}, concurrentWorkers)
+
+	for _, link := range vulnerabilitiesLinks {
+		wg.Add(1)
+		sem <- struct{}{}
+
+		go func(link string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			vuln := crawler.scrapeVulnerabilityDetails(query, link)
+			results <- vuln
+		}(link)
 	}
 
-	vulnerabilities := crawler.ExtractVulnerabilitiesDetails(query, links)
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
 
-	if len(vulnerabilities) != 0 {
-		s.Logger.Info(fmt.Sprintf("Web Scrapper has extracted %d vulnerabilities successfully!", len(vulnerabilities)))
+	var vulnerSlice []types.Vulnerability
+	for vuln := range results {
+		vulnerSlice = append(vulnerSlice, vuln)
+	}
+
+	return vulnerSlice
+}
+
+func (crawler *Crawler) scrapeVulnerabilityDetails(query, link string) types.Vulnerability {
+	var vuln types.Vulnerability
+
+	splitedLink := strings.Split(link, "/")
+	val, err := crawler.RedisClient.Get(context.Background(), splitedLink[len(splitedLink)-1]).Result()
+
+	if err != nil {
+		crawler.Logger.Info(fmt.Sprintf("Cache miss for %s - %s", query, splitedLink[len(splitedLink)-1]))
 	} else {
-		s.Logger.Info(fmt.Sprintf("Failed to extract vulnerabilities for %s", query))
+		json.Unmarshal([]byte(val), &vuln)
+		return vuln
 	}
 
-	result := []*pb.Vulnerability{}
-	for _, vulnerability := range vulnerabilities {
-		result = append(result, &pb.Vulnerability{
-			Name:               vulnerability.Name,
-			CVEID:              vulnerability.CVEID,
-			PublishedDate:      vulnerability.PublishedDate,
-			LastModified:       vulnerability.LastModified,
-			Description:        vulnerability.Description,
-			VulnerableVersions: vulnerability.VulnerableVersions,
-			NVDScore:           vulnerability.NVDScore,
-			CNAScore:           vulnerability.CNAScore,
+	c := colly.NewCollector()
+
+	// Extract the description of vulnerability
+	c.OnHTML("div.col-lg-9:nth-child(1) > p:nth-child(3)", func(h *colly.HTMLElement) {
+		vuln.Description = h.Text
+	})
+	// Extract the description of vulnerability if the first one doesn't work
+	c.OnHTML("div.col-lg-9:nth-child(1) > p:nth-child(2)", func(h *colly.HTMLElement) {
+		vuln.Description = h.Text
+	})
+	// Extract the CVE_ID of vulnerability
+	c.OnHTML("div.bs-callout:nth-child(1)", func(h *colly.HTMLElement) {
+		vuln.CVEID = h.ChildText("a")
+	})
+	// Extract the publish date of vulnerability
+	c.OnHTML("div.bs-callout:nth-child(1) > span:nth-child(8)", func(h *colly.HTMLElement) {
+		vuln.PublishedDate = h.Text
+	})
+	// Extract the last modified date of vulnerability
+	c.OnHTML("div.bs-callout:nth-child(1) > span:nth-child(12)", func(h *colly.HTMLElement) {
+		vuln.LastModified = h.Text
+	})
+	// Extract the NVD severity score of vulnerability
+	c.OnHTML("#Cvss3NistCalculatorAnchor", func(h *colly.HTMLElement) {
+		vuln.NVDScore = h.Text
+	})
+	// Extract the CNA severity score of vulnerability
+	c.OnHTML("#Cvss3CnaCalculatorAnchor", func(h *colly.HTMLElement) {
+		vuln.CNAScore = h.Text
+	})
+	// Extract vulnerable versions
+	c.OnScraped(func(r *colly.Response) {
+		res, err := http.Get(link)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer res.Body.Close()
+		if res.StatusCode != 200 {
+			log.Fatalf("status code error: %d %s", res.StatusCode, res.Status)
+		}
+
+		doc, err := goquery.NewDocumentFromReader(res.Body)
+		if err != nil {
+			fmt.Println("Error creating GoQuery document:", err)
+			return
+		}
+
+		var result []string
+		doc.Find("td[data-testid*='vuln-change-history']").Each(func(i int, e *goquery.Selection) {
+			// if it's a td tag that includes a portion of the vulnerable versions
+			if strings.Contains(e.Text(), "*cpe") {
+				extractVulnerableVersions(e.Text(), &result)
+			}
 		})
+		vuln.Name = query
+		vuln.VulnerableVersions = result
+	})
+
+	c.Visit(link)
+
+	jsonVulnerability, marshalErr := json.Marshal(vuln)
+	if marshalErr == nil {
+		crawler.RedisClient.Set(context.Background(), splitedLink[len(splitedLink)-1], jsonVulnerability, 72*time.Hour)
+		// crawler.Logger.Info(fmt.Sprintf("Cache set for %s - %s", query, splitedLink[len(splitedLink)-1]))
 	}
 
-	return &pb.VulnerabilityResponse{
-		Vulnerabilities: result,
-	}, nil
+	return vuln
+}
+
+func generateLink(query string) string {
+	baseUrl := "https://nvd.nist.gov/vuln/search/results"
+	formType := "Basic"
+	resultsType := "overview"
+	queryType := "phrase"
+	searchType := "all" // it could be "all" or "last3month"
+	// isCpeNameSearch := false
+	return fmt.Sprintf("%s?form_type=%v&results_type=%v&query=%v&queryType=%v&search_type=%v",
+		baseUrl,
+		formType,
+		resultsType,
+		query,
+		queryType,
+		searchType)
+}
+
+func splitBeforeSeparator(input, separator string) []string {
+	var result []string
+	parts := strings.Split(input, separator)
+
+	for i, part := range parts {
+		if i > 0 {
+			part = separator + part
+		}
+		result = append(result, part)
+	}
+
+	return result
+}
+
+func extractVulnerableVersions(elementText string, result *[]string) {
+	strSlice := splitBeforeSeparator(elementText, "*cpe")
+	for index, str := range strSlice {
+		if strings.HasPrefix(str, "*cpe") {
+			if strings.Contains(str, "versions") {
+				arr := splitBeforeSeparator(str, "versions")
+				str = strings.TrimSpace(arr[1])
+				if index != len(strSlice)-1 {
+					*result = append(*result, str)
+				} else {
+					s := strings.Split(str, "\n")
+					*result = append(*result, string(s[0]))
+				}
+			}
+		}
+	}
 }

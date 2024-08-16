@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc"
 
 	"khazande/ent"
-	nvdModule "khazande/internal/nvd"
+	grpcModule "khazande/internal/grpc"
 	routerModule "khazande/internal/routers"
 	envsModule "khazande/pkg/envs"
 	pb "khazande/pkg/grpc"
@@ -38,7 +38,7 @@ func main() {
 	}
 
 	grpcServer := grpc.NewServer()
-	pb.RegisterScrapperServiceServer(grpcServer, &nvdModule.Server{Logger: logger, RedisClient: redisClient})
+	pb.RegisterScrapperServiceServer(grpcServer, &grpcModule.Server{Logger: logger, RedisClient: redisClient, Envs: envs})
 
 	channel := make(chan os.Signal, 1)
 	signal.Notify(channel, os.Interrupt)
