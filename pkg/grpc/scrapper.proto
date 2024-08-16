@@ -12,6 +12,10 @@ message Vulnerability {
 	repeated string VulnerableVersions = 6;
 	string NVDScore = 7;
 	string CNAScore = 8;
+    string summary = 9;
+    string affectedVersions = 10;
+    string patchedVersions = 11;
+    string severity = 12;
 }
 
 message VulnerabilityRequest {
