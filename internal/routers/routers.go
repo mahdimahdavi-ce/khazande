@@ -1,6 +1,7 @@
 package routers
 
 import (
+	"khazande/ent"
 	advisorModule "khazande/internal/advisor"
 	handlersModule "khazande/internal/handlers"
 	envsModule "khazande/pkg/envs"
@@ -14,13 +15,13 @@ type Router struct {
 	Handler *handlersModule.Handler
 }
 
-func Initial(envs *envsModule.Envs, logger *zap.Logger) *Router {
+func Initial(envs *envsModule.Envs, logger *zap.Logger, psqlClient *ent.Client) *Router {
 	return &Router{
 		Advisor: &advisorModule.Advisor{
 			Logger: logger,
 			Envs:   envs,
 		},
-		Handler: handlersModule.Initial(envs, logger),
+		Handler: handlersModule.Initial(envs, logger, psqlClient),
 	}
 }
 
@@ -35,6 +36,7 @@ func (r *Router) SetupRouters(app *fiber.App) {
 	api := app.Group("/api")
 
 	api.Post("/fetch-vulnerabilities/:type", r.Handler.VulnerabilityHandler())
+	api.Get("/vulnerabilities/detail/:piplineId", r.Handler.FetchVulnerabilitiesDetails())
 
 	// 404 - Not Found error handler
 	app.Use(func(c *fiber.Ctx) error {

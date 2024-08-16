@@ -4,20 +4,24 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"khazande/ent"
 	advisorModule "khazande/internal/advisor"
 	"khazande/internal/types"
 	envsModule "khazande/pkg/envs"
+	psqlModule "khazande/pkg/psql"
 	"log"
 	"regexp"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/jedib0t/go-pretty/table"
 	"go.uber.org/zap"
 )
 
 type Handler struct {
-	Advisor *advisorModule.Advisor
+	Advisor    *advisorModule.Advisor
+	PsqlClient *ent.Client
 }
 
 type PackageJSON struct {
@@ -25,12 +29,13 @@ type PackageJSON struct {
 	DevDependencies map[string]string `json:"devDependencies"`
 }
 
-func Initial(envs *envsModule.Envs, logger *zap.Logger) *Handler {
+func Initial(envs *envsModule.Envs, logger *zap.Logger, psqlClient *ent.Client) *Handler {
 	return &Handler{
 		Advisor: &advisorModule.Advisor{
 			Logger: logger,
 			Envs:   envs,
 		},
+		PsqlClient: psqlClient,
 	}
 }
 
@@ -55,13 +60,32 @@ func (h *Handler) VulnerabilityHandler() fiber.Handler {
 
 		vulerabilities := h.Advisor.FetchVulnerabilitiesFromGithub(packages, ecosystem)
 
+		piplineId := uuid.New()
+		psqlInstance := psqlModule.Psql{PsqlClient: h.PsqlClient}
+		psqlInstance.InsertVulnerabilities(piplineId, vulerabilities)
+
 		if len(vulerabilities) > 0 {
-			result := renderTableResult(vulerabilities)
+			result := renderTableResult(vulerabilities, piplineId)
 			return c.Status(400).SendString(result)
 		} else {
 			return c.Status(200).SendString("No vulnerabilities found!")
 		}
 
+	}
+}
+
+func (h *Handler) FetchVulnerabilitiesDetails() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		piplineId := c.Params("piplineId")
+
+		psqlInstance := psqlModule.Psql{PsqlClient: h.PsqlClient}
+		Vulnerabilities, err := psqlInstance.GetVulnerabilities(piplineId)
+
+		if err != nil {
+			return c.Status(500).SendString("Internal Server Error")
+		}
+
+		return c.Status(200).JSON(fiber.Map{"vulnerabilities": Vulnerabilities})
 	}
 }
 
@@ -130,7 +154,7 @@ func extractPythonPackages(requirmentstxt string) map[string]string {
 	return packages
 }
 
-func renderTableResult(vulerabilities map[string][]*types.Vulnerability) string {
+func renderTableResult(vulerabilities map[string][]*types.Vulnerability, piplineId uuid.UUID) string {
 	var buffer bytes.Buffer
 	t := table.NewWriter()
 	t.SetOutputMirror(&buffer)
@@ -180,6 +204,7 @@ func renderTableResult(vulerabilities map[string][]*types.Vulnerability) string 
 		}
 	}
 	t.AppendFooter(table.Row{"", "", "Total", count - 1})
+	t.SetCaption(fmt.Sprintf(`Check this out if you need more details: http://host:port/api/vulnerabilities/detail/%s`, piplineId.String()))
 	t.Render()
 
 	return buffer.String()
