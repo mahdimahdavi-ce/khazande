@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -11,12 +12,15 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"google.golang.org/grpc"
 
+	"khazande/ent"
 	nvdModule "khazande/internal/nvd"
 	routerModule "khazande/internal/routers"
 	envsModule "khazande/pkg/envs"
 	pb "khazande/pkg/grpc"
 	loggerModule "khazande/pkg/logger"
 	redisModule "khazande/pkg/redis"
+
+	_ "github.com/lib/pq"
 )
 
 func main() {
@@ -26,6 +30,7 @@ func main() {
 	envs := envsModule.ReadEnvs()
 	logger := loggerModule.InitialLogger(envs.LOG_LEVEL)
 	redisClient := redisModule.Init(envs)
+	psqlClient := InitialDatabase(envs.PSQL_HOST, envs.PSQL_PORT, envs.PSQL_USERNAME, envs.PSQL_PASSWORD, envs.PSQL_DATABASE_NAME)
 
 	lis, tcpErr := net.Listen("tcp", fmt.Sprintf("%s:%s", envs.GRPC_SERVER_ADDRESS, envs.GRPC_SERVER_PORT))
 	if tcpErr != nil {
@@ -45,11 +50,27 @@ func main() {
 		}
 	}()
 
-	routers := routerModule.Initial(envs, logger)
+	routers := routerModule.Initial(envs, logger, psqlClient)
 	routers.SetupRouters(app)
 
 	grpcServer.Stop()
 	logger.Info("gRPC server is stoped")
 	lis.Close()
 	logger.Info("TCP connection is closed")
+}
+
+func InitialDatabase(host, port, username, password, databaseName string) *ent.Client {
+	// NOTE: On production sslmode must be enabled !!!
+	dsn := fmt.Sprintf("host=%s port=%s user=%s dbname=%s password=%s sslmode=disable", host, port, username, databaseName, password)
+
+	client, err := ent.Open("postgres", dsn)
+	if err != nil {
+		log.Fatalf("Failed opening connection to postgres: %v", err)
+	}
+
+	if migrationErr := client.Schema.Create(context.Background()); migrationErr != nil {
+		log.Fatalf("Failed creating schema resources: %v", migrationErr)
+	}
+
+	return client
 }
