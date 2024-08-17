@@ -204,7 +204,7 @@ func renderTableResult(vulerabilities map[string][]*types.Vulnerability, pipline
 		}
 	}
 	t.AppendFooter(table.Row{"", "", "Total", count - 1})
-	t.SetCaption(fmt.Sprintf(`Check this out if you need more details: http://host:port/api/vulnerabilities/detail/%s`, piplineId.String()))
+	t.SetCaption(fmt.Sprintf(`Check this out if you need more details: http://37.32.7.91:3000/api/vulnerabilities/detail/%s`, piplineId.String()))
 	t.Render()
 
 	return buffer.String()

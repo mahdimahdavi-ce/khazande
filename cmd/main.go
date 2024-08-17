@@ -60,6 +60,7 @@ func main() {
 func InitialDatabase(host, port, username, password, databaseName string) *ent.Client {
 	// NOTE: On production sslmode must be enabled !!!
 	dsn := fmt.Sprintf("host=%s port=%s user=%s dbname=%s password=%s sslmode=disable", host, port, username, databaseName, password)
+	fmt.Println(dsn)
 
 	client, err := ent.Open("postgres", dsn)
 	if err != nil {
