@@ -60,11 +60,10 @@ func (h *Handler) VulnerabilityHandler() fiber.Handler {
 
 		vulerabilities := h.Advisor.FetchVulnerabilitiesFromGithub(packages, ecosystem)
 
-		piplineId := uuid.New()
-		psqlInstance := psqlModule.Psql{PsqlClient: h.PsqlClient}
-		psqlInstance.InsertVulnerabilities(piplineId, vulerabilities)
-
 		if len(vulerabilities) > 0 {
+			piplineId := uuid.New()
+			psqlInstance := psqlModule.Psql{PsqlClient: h.PsqlClient}
+			psqlInstance.InsertVulnerabilities(piplineId, vulerabilities)
 			result := renderTableResult(vulerabilities, piplineId)
 			return c.Status(400).SendString(result)
 		} else {
@@ -204,7 +203,7 @@ func renderTableResult(vulerabilities map[string][]*types.Vulnerability, pipline
 		}
 	}
 	t.AppendFooter(table.Row{"", "", "Total", count - 1})
-	t.SetCaption(fmt.Sprintf(`Check this out if you need more details: http://37.32.7.91:3000/api/vulnerabilities/detail/%s`, piplineId.String()))
+	t.SetCaption(fmt.Sprintf(`Check this out if you need more details: http://37.32.7.91:3030/vulnerabilities/detail/%s`, piplineId.String()))
 	t.Render()
 
 	return buffer.String()

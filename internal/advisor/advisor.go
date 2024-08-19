@@ -36,9 +36,11 @@ func (a *Advisor) FetchVulnerabilitiesFromGithub(packages map[string]string, eco
 			defer wg.Done()
 			packageVulnerabilities := a.fetchVulnerabiltyOfSpecificPackage(packageName, packageVersion, ecosystem)
 
-			mutex.Lock()
-			vulnerabilites[packageName] = packageVulnerabilities
-			mutex.Unlock()
+			if len(packageVulnerabilities) > 0 {
+				mutex.Lock()
+				vulnerabilites[packageName] = packageVulnerabilities
+				mutex.Unlock()
+			}
 		}()
 	}
 
